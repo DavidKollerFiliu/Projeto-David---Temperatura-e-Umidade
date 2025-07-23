@@ -1,0 +1,170 @@
+// ESP32 - PROJETO - David
+
+// INÍCIO
+
+// Identifica e Estabelece conexão com BLYNK.
+
+#define BLYNK_TEMPLATE_ID "TMPL2SQ0MTD1p"
+#define BLYNK_TEMPLATE_NAME "LED CONTROL"
+#define BLYNK_AUTH_TOKEN "t0EsJ153Rj2YxNREABPHoDORy5z9Pi8h"
+
+//Inclui bibliotecas de BLYNK, SENDOR DHT, LDC e SD no programa.
+
+#include <BlynkSimpleEsp32.h>
+#include <DHTesp.h>
+#include <LiquidCrystal_I2C.h>
+#include <SD.h>
+
+// Conexão com WIFI, neste caso estamos usando GUEST do WOKWI.
+
+char ssid[] = "Wokwi-GUEST"; // Nome do WIFI.
+char pass[] = "";            // Password do WIFI.
+
+// COnfigurando LCD I2C --> I2C (Inter-Integrated Circuit) é um protocolo de comunicação serial criado pela Philips.
+
+#define I2C_ADDR          0x27   // Endereço padrão.
+#define LCD_COLUMNS       16    // Número de colunas.
+#define LCD_LINES         2     // Número de linhas.
+
+LiquidCrystal_I2C lcd(I2C_ADDR, LCD_COLUMNS, LCD_LINES); 
+
+// Configuração do pino de conexão do CS (Chip Select) do cartão Micro SD
+
+#define CS_PIN 5
+
+// Configuração da variável do Micro SD
+
+File myFile;
+
+// Configurando o sensor de temperatura.
+
+const int DHT_PIN = 15; // Define valor inteiro de dados do Pino 15 como entrada de valores de temperatura e humidade e colocando informação na variável (objeto) "DHT_PIN". 
+
+DHTesp dhtSensor; // Defifinindo a partir de dados da instância classe "DHTesp" a variável (objeto) "shtSensor".
+
+// Configurando alguns botões que podem ser acionados remotamente pelo BLYNK.
+
+int verde = 14; // Definindo pino 14 e o seu dado como inteiro na variável "verde"
+int azul = 12;  // Definindo pino 12 e o seu dado como inteiro na variável "azul"
+
+BLYNK_WRITE(V0) // Atribibuindo endereço virtual do BLYNK V0
+{
+  int buttonState = param.asInt(); // Extrai o valor do parâmetro (objeto) como inteiro (0 ou 1) do APP BLYNK V0
+
+  if (buttonState == 1) // Condição lógica "se" V0 = 1 "HIGH", ligar o LED verde; caso contrário V0 = 0 "LOW", desliga o LED verde. 
+  {
+    digitalWrite(verde, HIGH);
+  }
+  else
+  {
+    digitalWrite(verde, LOW);
+  }
+}
+BLYNK_WRITE(V1) // for green led
+{
+  int buttonState = param.asInt(); // Condição lógica "se" V1 = 1 "HIGH", ligar o LED azul; caso contrário V0 = 1 "LOW", desliga o LED azul.
+
+  if (buttonState == 1)
+  {
+    digitalWrite(azul, HIGH);
+  }
+  else
+  {
+    digitalWrite(azul, LOW);
+  }
+}
+
+void setup() // Função de configuração inicial do ambiente inicial do programa - roda uma única vez.
+{
+  Serial.begin(115200); // Configuração da taxa de transmissão de dados pela porta serial velocidade em bps.
+
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass); // Autentica, conecta no WIFI e estabelece comunicação com o BLYNK.
+
+  dhtSensor.setup(DHT_PIN, DHTesp::DHT22); // Relaciona objeto e pino digital
+
+  pinMode(verde, OUTPUT); //Defini pino "verde" como saída (pode ser para um LED ou  RELÉ).
+  pinMode(azul, OUTPUT); //Define pino "azul" como saída (pode ser para um LED ou RELÉ).
+  
+  digitalWrite(verde, LOW); // Inicia LED verde como apagado.
+  digitalWrite(azul, LOW); // Inicia LED azul como apagado
+
+  lcd.init(); // Inicia o LCD.
+  lcd.backlight(); // Liga a luz de fundo do LCD.
+
+
+  // Micro SD - Verificação de montagem
+
+  if (!SD.begin(CS_PIN)) {
+    Serial.println("Falha ao montar o cartão SD");
+    return;
+  }
+  Serial.println("Cartão SD montado com sucesso");
+
+}
+
+void loop() // Função de loop - reliza repetidamente a função.
+{
+  Blynk.run(); // Função que mantem o dispositivo conectado e sincronizado com BLYNK.
+   
+    TempAndHumidity data = dhtSensor.getTempAndHumidity(); // Realiza uma leitura simultânea de temperatura e umidade do sensor DHT22 meio da biblioteca DHTesp.
+
+    Blynk.virtualWrite(V2, data.temperature); // Coloca a informação de temperatura no pino virtual V2 do BLINK.
+    Blynk.virtualWrite(V3, data.humidity); // Coloca a informação de umidade do ar no pino virtual V2 do BLINK.
+
+
+    // Imprime na tela a temperatura e umidade
+    Serial.println("----------MEDIÇÃO DE TEMPERATURA E UMIDADE ----------");
+    Serial.println("Temperatura: " + String(data.temperature, 1) + "°C");
+    Serial.println("Umidade: " + String(data.humidity, 1) + "%");
+    
+    //Imprime no LCD a temperatura e umidade
+    lcd.setCursor(0, 0);
+    lcd.print(" Temp: " + String(data.temperature, 1) + "\xDF" + "C");
+    lcd.setCursor(0, 1);
+    lcd.print(" Umidade: " + String(data.humidity, 1) + "%");
+
+    // Micro SD
+
+    // Gravação LOCAL no cartão MicroSD
+    myFile = SD.open("/log.txt", FILE_WRITE);
+    if (myFile) {
+    myFile.printf("Temperatura: %.2f°C, Umidade: %.2f%%\n", data.temperature, data.humidity);
+    myFile.close();
+    Serial.println("Dados gravados com sucesso no MicroSD");
+    } else {
+    Serial.println("Erro ao abrir o arquivo para escrita");
+    }
+
+    // Leitura LOCAL do cartão MicroSD
+    myFile = SD.open("/log.txt");
+    if (myFile) {
+    Serial.println("Conteúdo do arquivo no MicroSD:");
+    while (myFile.available()) {
+    Serial.write(myFile.read());
+    }
+    Serial.println("----------FIM DA MEDIÇÃO E GRAVAÇÃO----------");
+    myFile.close();
+    } 
+    else {
+    Serial.println("Erro ao abrir o arquivo para leitura");
+    }
+    
+    //ALERTA TEMPERATURA
+
+    if (data.temperature>50) // Coloca condição para alerta de alta temperatura acima de 50°C.
+    {Blynk.logEvent("alta_temp"); // Coloca esta informação em um alerta criado no BLYNK.
+    }
+    
+    //ALERTA UMIDADE
+
+    if (data.humidity>70) // Coloca condição para alerta de alta temperatura acima de 50°C.
+    {Blynk.logEvent("alta_umid"); // Coloca esta informação em um alerta criado no BLYNK.
+    }
+
+    // Loop realizado/atualizado a cada 2 segundos.
+
+    delay(2000);
+  
+}
+
+//FIM
